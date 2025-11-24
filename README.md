@@ -74,4 +74,6 @@ XMI files are played using Windows' built-in MIDI synthesizer (Microsoft GS Wave
 
 ## License
 
-This project uses NAudio, which is licensed under the Microsoft Public License (Ms-PL).
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+Third-party libraries used in this project are licensed under their respective licenses. See [THIRD-PARTY-LICENSES](THIRD-PARTY-LICENSES) for complete license information for all dependencies.
