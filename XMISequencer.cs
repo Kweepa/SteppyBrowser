@@ -552,4 +552,319 @@ namespace SteppyBrowser
             return deltaTime;
         }
     }
+
+    /// <summary>
+    /// Static class for extracting metadata from XMI files without full playback initialization
+    /// </summary>
+    public static class XMIFileInfo
+    {
+        private const int FORM_AS_INT = 1179603533;
+
+        public class XMIMetadata
+        {
+            public TimeSpan Duration { get; set; }
+            public double BPM { get; set; }
+            public int TimeSignatureNumerator { get; set; }
+            public int TimeSignatureDenominator { get; set; }
+            public int EventCount { get; set; }
+            public bool Found { get; set; }
+            public string ErrorMessage { get; set; }
+        }
+
+        public static XMIMetadata GetFileInfo(string filePath)
+        {
+            var metadata = new XMIMetadata
+            {
+                Found = false,
+                BPM = 120.0,
+                TimeSignatureNumerator = 4,
+                TimeSignatureDenominator = 4
+            };
+
+            try
+            {
+                using (FileStream fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read))
+                using (BinaryReader reader = new BinaryReader(fileStream))
+                {
+                    long evntChunkStart = 0;
+                    long evntChunkEnd = 0;
+                    
+                    // Find EVNT chunk using recursive search
+                    FindEventChunk(reader, fileStream.Length, ref evntChunkStart, ref evntChunkEnd);
+                    
+                    if (evntChunkEnd == 0)
+                    {
+                        metadata.ErrorMessage = "Could not find EVNT chunk";
+                        return metadata;
+                    }
+                    
+                    // Parse events to extract tempo, time signature, and calculate duration
+                    fileStream.Position = evntChunkStart;
+                    double currentTime = 0;
+                    double fileBPM = 120.0;
+                    int timeSigNum = 4;
+                    int timeSigDen = 4;
+                    int tpqn = 30;
+                    double secondsPerTick = (60.0 / fileBPM) / tpqn;
+                    int eventCount = 0;
+                    double lastEventTime = 0;
+                    
+                    byte lastStatus = 0;
+                    
+                    while (fileStream.Position < evntChunkEnd)
+                    {
+                        // Read delta time
+                        int deltaTime = 0;
+                        while (fileStream.Position < evntChunkEnd)
+                        {
+                            byte timeByte = reader.ReadByte();
+                            if ((timeByte & 0x80) != 0)
+                            {
+                                fileStream.Position--;
+                                break;
+                            }
+                            deltaTime += timeByte;
+                            if (timeByte != 127) break;
+                        }
+                        
+                        if (fileStream.Position >= evntChunkEnd) break;
+                        
+                        currentTime += deltaTime * secondsPerTick;
+                        lastEventTime = currentTime;
+                        
+                        byte status = reader.ReadByte();
+                        
+                        // Handle Running Status
+                        if ((status & 0x80) == 0)
+                        {
+                            fileStream.Position--;
+                            if (lastStatus == 0) break;
+                            status = lastStatus;
+                        }
+                        else
+                        {
+                            lastStatus = status;
+                        }
+                        
+                        byte eventType = (byte)(status & 0xF0);
+                        
+                        eventCount++;
+                        
+                        if (status == 0xFF) // Meta event
+                        {
+                            byte metaType = reader.ReadByte();
+                            
+                            // Read VLQ length
+                            int length = 0;
+                            byte b;
+                            do
+                            {
+                                if (fileStream.Position >= evntChunkEnd) break;
+                                b = reader.ReadByte();
+                                length = (length << 7) | (b & 0x7F);
+                            } while ((b & 0x80) != 0);
+                            
+                            if (metaType == 0x51 && length == 3) // Set Tempo
+                            {
+                                int a = reader.ReadByte();
+                                int b1 = reader.ReadByte();
+                                int c = reader.ReadByte();
+                                int microsecondsPerQuarterNote = (a << 16) | (b1 << 8) | c;
+                                fileBPM = 60_000_000.0 / microsecondsPerQuarterNote;
+                                
+                                // Recalculate secondsPerTick
+                                double timeSigRatio = (double)timeSigNum / timeSigDen;
+                                tpqn = (int)Math.Round(8333.0 / (fileBPM * timeSigRatio));
+                                double secondsPerQuarterNote = 60.0 / fileBPM;
+                                secondsPerTick = secondsPerQuarterNote / tpqn;
+                            }
+                            else if (metaType == 0x58 && length == 4) // Time Signature
+                            {
+                                timeSigNum = reader.ReadByte();
+                                byte denominatorPower = reader.ReadByte();
+                                reader.ReadByte(); // ClocksPerClick
+                                reader.ReadByte(); // 32nds per quarter
+                                timeSigDen = 1 << denominatorPower;
+                                
+                                // Recalculate secondsPerTick
+                                double timeSigRatio = (double)timeSigNum / timeSigDen;
+                                tpqn = (int)Math.Round(8333.0 / (fileBPM * timeSigRatio));
+                                double secondsPerQuarterNote = 60.0 / fileBPM;
+                                secondsPerTick = secondsPerQuarterNote / tpqn;
+                            }
+                            else
+                            {
+                                // Skip meta event data
+                                for (int i = 0; i < length && fileStream.Position < evntChunkEnd; i++)
+                                {
+                                    reader.ReadByte();
+                                }
+                            }
+                        }
+                        else if (eventType == 0x90) // Note On
+                        {
+                            reader.ReadByte(); // key
+                            reader.ReadByte(); // velocity
+                            
+                            // Read duration VLQ
+                            int noteDuration = 0;
+                            byte b;
+                            do
+                            {
+                                if (fileStream.Position >= evntChunkEnd) break;
+                                b = reader.ReadByte();
+                                noteDuration = (noteDuration << 7) | (b & 0x7F);
+                            } while ((b & 0x80) != 0);
+                        }
+                        else if (eventType == 0x80) // Note Off
+                        {
+                            reader.ReadByte(); // key
+                            reader.ReadByte(); // velocity
+                        }
+                        else if (eventType == 0xC0 || eventType == 0xD0) // Program Change or Channel Pressure
+                        {
+                            reader.ReadByte(); // 1 data byte
+                        }
+                        else if (eventType == 0xE0 || eventType == 0xB0 || eventType == 0xA0) // Pitch Bend, Controller, Aftertouch
+                        {
+                            reader.ReadByte(); // 2 data bytes
+                            reader.ReadByte();
+                        }
+                        else if (status == 0xF0) // SysEx
+                        {
+                            while (fileStream.Position < evntChunkEnd && reader.ReadByte() != 0xF7) { }
+                        }
+                    }
+                    
+                    metadata.Found = true;
+                    metadata.Duration = TimeSpan.FromSeconds(lastEventTime);
+                    metadata.BPM = fileBPM;
+                    metadata.TimeSignatureNumerator = timeSigNum;
+                    metadata.TimeSignatureDenominator = timeSigDen;
+                    metadata.EventCount = eventCount;
+                }
+            }
+            catch (Exception ex)
+            {
+                metadata.ErrorMessage = ex.Message;
+            }
+
+            return metadata;
+        }
+
+        private static void FindEventChunk(BinaryReader reader, long containerEndPosition, ref long evntChunkStart, ref long evntChunkEnd)
+        {
+            while (reader.BaseStream.Position < containerEndPosition)
+            {
+                if (reader.BaseStream.Position + 8 > containerEndPosition) break;
+
+                string chunkID = ReadChunkID(reader);
+                int chunkSize = ReadInt32BigEndian(reader);
+
+                if (chunkID == "XMID" && chunkSize == FORM_AS_INT)
+                {
+                    chunkID = "FORM";
+                    chunkSize = ReadInt32BigEndian(reader);
+                }
+                
+                long subChunkEnd = reader.BaseStream.Position + chunkSize;
+
+                switch (chunkID)
+                {
+                case "EVNT":
+                    // This is what we want!
+                    evntChunkStart = reader.BaseStream.Position;
+                    evntChunkEnd = subChunkEnd;
+                    return; // Stop parsing, we're ready
+                
+                case "FORM":
+                    ReadChunkID(reader); // Read and discard Form Type
+                    FindEventChunk(reader, subChunkEnd, ref evntChunkStart, ref evntChunkEnd);
+                    break;
+                case "CAT ":
+                    FindCatalogChunk(reader, subChunkEnd, ref evntChunkStart, ref evntChunkEnd);
+                    break;
+                
+                default:
+                    // Not a container, skip it
+                    reader.BaseStream.Seek(subChunkEnd, SeekOrigin.Begin);
+                    break;
+                }
+                
+                if (evntChunkEnd > 0) return; // Found it in a sub-chunk
+
+                // Handle IFF Padding
+                if (chunkSize % 2 != 0 && reader.BaseStream.Position < containerEndPosition)
+                {
+                    reader.ReadByte();
+                }
+            }
+        }
+
+        private static void FindCatalogChunk(BinaryReader reader, long catalogEndPosition, ref long evntChunkStart, ref long evntChunkEnd)
+        {
+            long startPos = reader.BaseStream.Position;
+            string sniff = ReadChunkID(reader);
+            reader.BaseStream.Seek(startPos, SeekOrigin.Begin); // Rewind
+
+            if (sniff == "FORM" || sniff == "XMID")
+            {
+                // Instrument Bank (UW file) - dive in
+                FindEventChunk(reader, catalogEndPosition, ref evntChunkStart, ref evntChunkEnd);
+            }
+            else if (sniff == "MROF")
+            {
+                // Song Bank (AW file) - dive in
+                FindEventChunk(reader, catalogEndPosition, ref evntChunkStart, ref evntChunkEnd);
+            }
+            else
+            {
+                // It's an offset list. This is the V14 logic.
+                int numEntries = reader.ReadInt16(); // Little-Endian
+                reader.ReadInt16(); // Skip 2 bytes
+
+                for (int i = 0; i < numEntries; i++)
+                {
+                    if (reader.BaseStream.Position + 4 > catalogEndPosition) break;
+                    int offset = reader.ReadInt32(); // Little-Endian
+                    if (offset == 0) continue; 
+
+                    long resumePos = reader.BaseStream.Position; 
+                    try
+                    {
+                        reader.BaseStream.Seek(offset, SeekOrigin.Begin); 
+                        // A sub-song is a FORM XMID
+                        string formID = ReadChunkID(reader);
+                        int formSize = ReadInt32BigEndian(reader);
+                        long formEndPosition = reader.BaseStream.Position + formSize;
+                        string formType = ReadChunkID(reader);
+                        
+                        if(formID == "FORM" && formType == "XMID")
+                        {
+                            FindEventChunk(reader, formEndPosition, ref evntChunkStart, ref evntChunkEnd);
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // Skip invalid entries
+                    }
+                    
+                    reader.BaseStream.Seek(resumePos, SeekOrigin.Begin);
+                    if (evntChunkEnd > 0) return; // Found it!
+                }
+            }
+        }
+
+        private static string ReadChunkID(BinaryReader reader)
+        {
+            return new string(reader.ReadChars(4));
+        }
+
+        private static int ReadInt32BigEndian(BinaryReader reader)
+        {
+            byte[] bytes = reader.ReadBytes(4);
+            Array.Reverse(bytes);
+            return BitConverter.ToInt32(bytes, 0);
+        }
+    }
 }
