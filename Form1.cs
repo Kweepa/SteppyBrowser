@@ -227,7 +227,7 @@ namespace SteppyBrowser
                         }
                         else if (extension == ".voc")
                         {
-                            audioFileReader = PlayVoc(filePath);
+                            audioFileReader = VOCPlayer.CreateWaveProvider(filePath);
                             waveOut.Init(audioFileReader);
                             waveOut.Play();
                             DisplayVocFileInfo(filePath);
@@ -351,7 +351,7 @@ namespace SteppyBrowser
                         }
                         else if (extension == ".voc")
                         {
-                            audioFileReader = PlayVoc(filePath);
+                            audioFileReader = VOCPlayer.CreateWaveProvider(filePath);
                             waveOut.Init(audioFileReader);
                             waveOut.Play();
                             DisplayVocFileInfo(filePath);
@@ -483,7 +483,7 @@ namespace SteppyBrowser
                         }
                         else if (extension == ".voc")
                         {
-                            audioFileReader = PlayVoc(filePath);
+                            audioFileReader = VOCPlayer.CreateWaveProvider(filePath);
                             waveOut.Init(audioFileReader);
                             waveOut.Play();
                             DisplayVocFileInfo(filePath);
@@ -781,150 +781,26 @@ namespace SteppyBrowser
             PopulateRecentFoldersMenu(openRecentMenuItem);
         }
 
-        public class RawSourceFloatWaveProvider : IWaveProvider
-        {
-            private readonly float[] source;
-            private readonly WaveFormat waveFormat;
-            private int position;
-
-            public RawSourceFloatWaveProvider(float[] source, WaveFormat waveFormat)
-            {
-                this.source = source;
-                this.waveFormat = waveFormat;
-            }
-
-            public int Read(byte[] buffer, int offset, int count)
-            {
-                int sourceIndex = position * waveFormat.Channels;
-                int sourceSamplesRemaining = source.Length - sourceIndex;
-                int destBytesRemaining = buffer.Length - offset;
-                int bytesToCopy = Math.Min(Math.Min(destBytesRemaining, sourceSamplesRemaining * 4), count);
-
-                if (bytesToCopy > 0)
-                {
-                    Buffer.BlockCopy(source, sourceIndex * 4, buffer, offset, bytesToCopy);
-                    position += bytesToCopy / (waveFormat.Channels * 4);
-                }
-                else
-                {
-                    return 0;
-                }
-
-                return bytesToCopy;
-            }
-
-            public WaveFormat WaveFormat
-            {
-                get { return waveFormat; }
-            }
-        }
         private void DisplayVocFileInfo(string filePath)
         {
-            try
-            {
-                byte[] data = File.ReadAllBytes(filePath);
-                
-                // Check minimum file size
-                if (data.Length < 26)
-                {
-                    toolStripStatusLabel1.Text = "VOC File";
-                    textBox1.Text = $"VOC File: {Path.GetFileName(filePath)}" + Environment.NewLine
-                                   + "File too small to parse";
-                    return;
-                }
-                
-                string header = "";
-                // check header
-                for (int i = 0; i < 19 && i < data.Length; i++)
-                {
-                    header += (char)data[i];
-                }
-                if (header == "Creative Voice File")
-                {
-                    int index = 0x1a;
-                    int totalSamples = 0;
-                    int sampleRate = 0;
-                    int channels = 1; // default mono
-                    
-                    while (index + 4 <= data.Length)
-                    {
-                        int blockType = data[index];
-                        
-                        // Check if we have enough bytes to read dataSize
-                        if (index + 4 > data.Length) break;
-                        
-                        int dataSize = data[index + 1] + 256 * (data[index + 2] + 256 * data[index + 3]);
-                        index += 4;
-                        
-                        // Check if dataSize is valid
-                        if (dataSize < 0 || index + dataSize > data.Length)
-                        {
-                            break;
-                        }
-                        
-                        if (blockType == 1)
-                        {
-                            // regular sound data - need at least 2 more bytes
-                            if (index + 2 <= data.Length)
-                            {
-                                int samplingRate = data[index];
-                                if (samplingRate != 256) // Avoid division by zero
-                                {
-                                    int hertz = -1000000 / (samplingRate - 256);
-                                    int numSamples = Math.Max(0, dataSize - 2);
-                                    totalSamples += numSamples;
-                                    if (sampleRate == 0) sampleRate = hertz;
-                                }
-                            }
-                        }
-                        else if (blockType == 8)
-                        {
-                            // digi sound attr extension block - need at least 4 more bytes
-                            if (index + 4 <= data.Length)
-                            {
-                                int voiceMode = data[index + 3];
-                                channels = (voiceMode == 1) ? 2 : 1; // stereo = 1, mono = 0
-                            }
-                        }
-                        else if (blockType == 0)
-                        {
-                            // Terminator block
-                            break;
-                        }
-                        
-                        index += dataSize;
-                    }
-                    
-                    if (sampleRate > 0 && totalSamples > 0)
-                    {
-                        TimeSpan duration = TimeSpan.FromSeconds((double)totalSamples / sampleRate);
-                        string durationStr = $"{duration.Hours:D2}:{duration.Minutes:D2}:{duration.Seconds:D2}.{duration.Milliseconds:D3}";
-                        
-                        toolStripStatusLabel1.Text = $"Duration={durationStr}";
-                        textBox1.Text = $"VOC File: {Path.GetFileName(filePath)}" + Environment.NewLine
-                                       + $"Duration: {durationStr}" + Environment.NewLine
-                                       + $"Sample Rate: {sampleRate} Hz" + Environment.NewLine
-                                       + $"Channels: {(channels == 1 ? "Mono" : "Stereo")}";
-                    }
-                    else
-                    {
-                        toolStripStatusLabel1.Text = "VOC File";
-                        textBox1.Text = $"VOC File: {Path.GetFileName(filePath)}";
-                    }
-                }
-                else
-                {
-                    toolStripStatusLabel1.Text = "VOC File";
-                    textBox1.Text = $"VOC File: {Path.GetFileName(filePath)}" + Environment.NewLine
-                                   + "Invalid VOC header";
-                }
-            }
-            catch (Exception ex)
+            var metadata = VOCFileInfo.GetFileInfo(filePath);
+            
+            if (!metadata.Found)
             {
                 toolStripStatusLabel1.Text = "VOC File";
                 textBox1.Text = $"VOC File: {Path.GetFileName(filePath)}" + Environment.NewLine
-                               + $"Error reading file info: {ex.Message}";
+                               + (metadata.ErrorMessage ?? "Could not extract file information");
+                return;
             }
+            
+            // Format duration
+            string durationStr = $"{metadata.Duration.Hours:D2}:{metadata.Duration.Minutes:D2}:{metadata.Duration.Seconds:D2}.{metadata.Duration.Milliseconds:D3}";
+            
+            toolStripStatusLabel1.Text = $"Duration={durationStr}";
+            textBox1.Text = $"VOC File: {Path.GetFileName(filePath)}" + Environment.NewLine
+                           + $"Duration: {durationStr}" + Environment.NewLine
+                           + $"Sample Rate: {metadata.SampleRate} Hz" + Environment.NewLine
+                           + $"Channels: {(metadata.Channels == 1 ? "Mono" : "Stereo")}";
         }
 
         private void DisplayXmiFileInfo(string filePath)
@@ -951,60 +827,5 @@ namespace SteppyBrowser
                            + "Using Windows MIDI Synthesizer";
         }
 
-        private IWaveProvider PlayVoc(string fileName)
-        {
-            IWaveProvider waveProvider = null;
-
-            byte[] data = File.ReadAllBytes(fileName);
-            string header = "";
-            // check header
-            for (int i = 0; i < 19; i++)
-            {
-                header += (char)data[i];
-            }
-            if (header == "Creative Voice File")
-            {
-                int index = 0x1a;
-                int timeConstant = 0;
-                int packMethod = 0;
-                int voiceMode = 0; // mono
-                while (index < data.Length)
-                {
-                    int blockType = data[index];
-                    int dataSize = data[index + 1] + 256 * (data[index + 2] + 256 * data[index + 3]);
-                    index += 4;
-                    if (blockType == 1)
-                    {
-                        // regular sound data
-                        int samplingRate = data[index];
-                        packMethod = data[index + 1];
-                        int hertz = -1000000 / (samplingRate - 256);
-                        int numSamples = dataSize - 2;
-                        float[] samples = new float[numSamples];
-                        index += 2;
-                        for (int i = 0; i < numSamples; i++)
-                        {
-                            samples[i] = data[i + index] / 256.0f - 0.5f;
-                        }
-
-                        // Create NAudio WaveFormat (Important: Use IeeeFloat)
-                        WaveFormat waveFormat = WaveFormat.CreateIeeeFloatWaveFormat(hertz, 1);
-
-                        // Create NAudio IWaveProvider from float array
-                        waveProvider = new RawSourceFloatWaveProvider(samples, waveFormat);
-                    }
-                    else if (blockType == 8)
-                    {
-                        // digi sound attr extension block
-                        timeConstant = data[index] + 256 * data[index + 1];
-                        packMethod = data[index + 2];
-                        voiceMode = data[index + 3];
-                    }
-                    index += dataSize;
-                }
-            }
-
-            return waveProvider;
-        }
     }
 }

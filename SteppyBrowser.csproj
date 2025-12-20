@@ -112,6 +112,8 @@
       <DependentUpon>Form1.cs</DependentUpon>
     </Compile>
     <Compile Include="Program.cs" />
+    <Compile Include="VOCFileInfo.cs" />
+    <Compile Include="VOCPlayer.cs" />
     <Compile Include="XMIMusicCommand.cs" />
     <Compile Include="XMINoteOffBuffer.cs" />
     <Compile Include="XMISequencer.cs" />
