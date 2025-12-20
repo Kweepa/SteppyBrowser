@@ -2,6 +2,11 @@ using System;
 using System.IO;
 using System.Collections.Concurrent;
 
+// this is the XMI sequencer class
+// it reads an XMI file, finds the EVNT chunk, and
+// plays it back in real-time by sending commands to a thread-safe queue.
+// it is used by the XMIPlayer class to play the XMI file.
+
 namespace SteppyBrowser
 {
     /// <summary>
