@@ -1,4 +1,4 @@
-﻿namespace SteppyBrowser
+namespace SteppyBrowser
 {
     partial class Form1
     {
@@ -43,6 +43,8 @@
             this.aboutToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.statusStrip1 = new System.Windows.Forms.StatusStrip();
             this.toolStripStatusLabel1 = new System.Windows.Forms.ToolStripStatusLabel();
+            this.treeViewContextMenu = new System.Windows.Forms.ContextMenuStrip();
+            this.openExplorerMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             ((System.ComponentModel.ISupportInitialize)(this.splitContainer1)).BeginInit();
             this.splitContainer1.Panel1.SuspendLayout();
             this.splitContainer1.Panel2.SuspendLayout();
@@ -57,6 +59,7 @@
             this.treeView1.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
             | System.Windows.Forms.AnchorStyles.Left) 
             | System.Windows.Forms.AnchorStyles.Right)));
+            this.treeView1.ContextMenuStrip = this.treeViewContextMenu;
             this.treeView1.Location = new System.Drawing.Point(3, 3);
             this.treeView1.Name = "treeView1";
             this.treeView1.Size = new System.Drawing.Size(252, 549);
@@ -202,6 +205,21 @@
             this.toolStripStatusLabel1.Size = new System.Drawing.Size(440, 25);
             this.toolStripStatusLabel1.Text = "Welcome to Steppy Browser! Open a folder to explore";
             // 
+            // treeViewContextMenu
+            // 
+            this.treeViewContextMenu.ImageScalingSize = new System.Drawing.Size(24, 24);
+            this.treeViewContextMenu.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.openExplorerMenuItem});
+            this.treeViewContextMenu.Name = "treeViewContextMenu";
+            this.treeViewContextMenu.Size = new System.Drawing.Size(280, 36);
+            // 
+            // openExplorerMenuItem
+            // 
+            this.openExplorerMenuItem.Name = "openExplorerMenuItem";
+            this.openExplorerMenuItem.Size = new System.Drawing.Size(279, 32);
+            this.openExplorerMenuItem.Text = "Open Explorer Window Here";
+            this.openExplorerMenuItem.Click += new System.EventHandler(this.openExplorerMenuItem_Click);
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(144F, 144F);
@@ -249,6 +267,8 @@
         private System.Windows.Forms.StatusStrip statusStrip1;
         private System.Windows.Forms.ToolStripStatusLabel toolStripStatusLabel1;
         private System.Windows.Forms.ToolStripMenuItem openRecentMenuItem;
+        private System.Windows.Forms.ContextMenuStrip treeViewContextMenu;
+        private System.Windows.Forms.ToolStripMenuItem openExplorerMenuItem;
     }
 }
 

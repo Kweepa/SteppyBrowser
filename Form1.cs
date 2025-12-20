@@ -676,6 +676,40 @@ namespace SteppyBrowser
             }
         }
 
+        private void openExplorerMenuItem_Click(object sender, EventArgs e)
+        {
+            TreeNode node = treeView1.SelectedNode;
+            if (node == null || node.Tag == null) return;
+
+            string path = node.Tag.ToString();
+            if (string.IsNullOrEmpty(path)) return;
+
+            string explorerPath;
+            if (File.Exists(path))
+            {
+                // For files, open Explorer at the file's parent directory
+                explorerPath = Path.GetDirectoryName(path);
+            }
+            else if (Directory.Exists(path))
+            {
+                // For directories, open Explorer at that folder
+                explorerPath = path;
+            }
+            else
+            {
+                return; // Path doesn't exist
+            }
+
+            try
+            {
+                Process.Start("explorer.exe", explorerPath);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error opening folder: {ex.Message}");
+            }
+        }
+
         private void textBoxSearch_TextChanged(object sender, EventArgs e)
         {
             string searchText = textBoxSearch.Text.ToLower();
