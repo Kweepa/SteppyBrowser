@@ -31,6 +31,11 @@ namespace SteppyBrowser
             this.treeView1 = new System.Windows.Forms.TreeView();
             this.textBox1 = new System.Windows.Forms.TextBox();
             this.splitContainer1 = new System.Windows.Forms.SplitContainer();
+            this.panelXmiScrub = new System.Windows.Forms.Panel();
+            this.buttonAudioPlayPause = new System.Windows.Forms.Button();
+            this.trackBarXmi = new System.Windows.Forms.TrackBar();
+            this.labelXmiTime = new System.Windows.Forms.Label();
+            this.modelViewerControl = new SteppyBrowser.ModelViewerControl();
             this.pictureBox1 = new System.Windows.Forms.PictureBox();
             this.textBoxSearch = new System.Windows.Forms.TextBox();
             this.label1 = new System.Windows.Forms.Label();
@@ -49,6 +54,8 @@ namespace SteppyBrowser
             this.splitContainer1.Panel1.SuspendLayout();
             this.splitContainer1.Panel2.SuspendLayout();
             this.splitContainer1.SuspendLayout();
+            this.panelXmiScrub.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.trackBarXmi)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).BeginInit();
             this.menuStrip1.SuspendLayout();
             this.statusStrip1.SuspendLayout();
@@ -70,14 +77,12 @@ namespace SteppyBrowser
             // 
             // textBox1
             // 
-            this.textBox1.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
-            | System.Windows.Forms.AnchorStyles.Left) 
-            | System.Windows.Forms.AnchorStyles.Right)));
-            this.textBox1.Location = new System.Drawing.Point(3, 3);
+            this.textBox1.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.textBox1.Location = new System.Drawing.Point(0, 0);
             this.textBox1.Multiline = true;
             this.textBox1.Name = "textBox1";
             this.textBox1.ScrollBars = System.Windows.Forms.ScrollBars.Vertical;
-            this.textBox1.Size = new System.Drawing.Size(507, 549);
+            this.textBox1.Size = new System.Drawing.Size(513, 555);
             this.textBox1.TabIndex = 1;
             // 
             // splitContainer1
@@ -95,19 +100,76 @@ namespace SteppyBrowser
             // splitContainer1.Panel2
             // 
             this.splitContainer1.Panel2.Controls.Add(this.pictureBox1);
+            this.splitContainer1.Panel2.Controls.Add(this.modelViewerControl);
             this.splitContainer1.Panel2.Controls.Add(this.textBox1);
+            this.splitContainer1.Panel2.Controls.Add(this.panelXmiScrub);
             this.splitContainer1.Size = new System.Drawing.Size(775, 555);
             this.splitContainer1.SplitterDistance = 258;
             this.splitContainer1.TabIndex = 2;
             // 
+            // panelXmiScrub
+            // 
+            this.panelXmiScrub.Controls.Add(this.trackBarXmi);
+            this.panelXmiScrub.Controls.Add(this.labelXmiTime);
+            this.panelXmiScrub.Controls.Add(this.buttonAudioPlayPause);
+            this.panelXmiScrub.Dock = System.Windows.Forms.DockStyle.Bottom;
+            this.panelXmiScrub.Location = new System.Drawing.Point(0, 511);
+            this.panelXmiScrub.Name = "panelXmiScrub";
+            this.panelXmiScrub.Size = new System.Drawing.Size(513, 44);
+            this.panelXmiScrub.TabIndex = 4;
+            this.panelXmiScrub.Visible = false;
+            // 
+            // buttonAudioPlayPause
+            // 
+            this.buttonAudioPlayPause.Location = new System.Drawing.Point(3, 6);
+            this.buttonAudioPlayPause.Name = "buttonAudioPlayPause";
+            this.buttonAudioPlayPause.Size = new System.Drawing.Size(62, 28);
+            this.buttonAudioPlayPause.TabIndex = 2;
+            this.buttonAudioPlayPause.Text = "Pause";
+            this.buttonAudioPlayPause.UseVisualStyleBackColor = true;
+            this.buttonAudioPlayPause.Click += new System.EventHandler(this.buttonAudioPlayPause_Click);
+            // 
+            // trackBarXmi
+            // 
+            this.trackBarXmi.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.trackBarXmi.AutoSize = false;
+            this.trackBarXmi.Location = new System.Drawing.Point(68, 6);
+            this.trackBarXmi.Maximum = 1000;
+            this.trackBarXmi.Name = "trackBarXmi";
+            this.trackBarXmi.Size = new System.Drawing.Size(325, 32);
+            this.trackBarXmi.TabIndex = 0;
+            this.trackBarXmi.TickStyle = System.Windows.Forms.TickStyle.None;
+            this.trackBarXmi.MouseDown += new System.Windows.Forms.MouseEventHandler(this.trackBarXmi_MouseDown);
+            this.trackBarXmi.MouseUp += new System.Windows.Forms.MouseEventHandler(this.trackBarXmi_MouseUp);
+            this.trackBarXmi.KeyUp += new System.Windows.Forms.KeyEventHandler(this.trackBarXmi_KeyUp);
+            this.trackBarXmi.Scroll += new System.EventHandler(this.trackBarXmi_Scroll);
+            // 
+            // labelXmiTime
+            // 
+            this.labelXmiTime.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.labelXmiTime.Location = new System.Drawing.Point(399, 8);
+            this.labelXmiTime.Name = "labelXmiTime";
+            this.labelXmiTime.Size = new System.Drawing.Size(111, 23);
+            this.labelXmiTime.TabIndex = 1;
+            this.labelXmiTime.Text = "0:00 / 0:00";
+            this.labelXmiTime.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
+            // 
+            // modelViewerControl
+            // 
+            this.modelViewerControl.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.modelViewerControl.Location = new System.Drawing.Point(0, 0);
+            this.modelViewerControl.Name = "modelViewerControl";
+            this.modelViewerControl.Size = new System.Drawing.Size(513, 555);
+            this.modelViewerControl.TabIndex = 3;
+            this.modelViewerControl.Visible = false;
+            // 
             // pictureBox1
             // 
-            this.pictureBox1.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
-            | System.Windows.Forms.AnchorStyles.Left) 
-            | System.Windows.Forms.AnchorStyles.Right)));
-            this.pictureBox1.Location = new System.Drawing.Point(3, 3);
+            this.pictureBox1.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.pictureBox1.Location = new System.Drawing.Point(0, 0);
             this.pictureBox1.Name = "pictureBox1";
-            this.pictureBox1.Size = new System.Drawing.Size(507, 549);
+            this.pictureBox1.Size = new System.Drawing.Size(513, 555);
             this.pictureBox1.TabIndex = 2;
             this.pictureBox1.TabStop = false;
             this.pictureBox1.SizeChanged += new System.EventHandler(this.PictureBox1_Resize);
@@ -240,6 +302,9 @@ namespace SteppyBrowser
             this.splitContainer1.Panel2.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)(this.splitContainer1)).EndInit();
             this.splitContainer1.ResumeLayout(false);
+            this.panelXmiScrub.ResumeLayout(false);
+            this.panelXmiScrub.PerformLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.trackBarXmi)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).EndInit();
             this.menuStrip1.ResumeLayout(false);
             this.menuStrip1.PerformLayout();
@@ -255,6 +320,10 @@ namespace SteppyBrowser
         private System.Windows.Forms.TreeView treeView1;
         private System.Windows.Forms.TextBox textBox1;
         private System.Windows.Forms.SplitContainer splitContainer1;
+        private System.Windows.Forms.Panel panelXmiScrub;
+        private System.Windows.Forms.Button buttonAudioPlayPause;
+        private System.Windows.Forms.TrackBar trackBarXmi;
+        private System.Windows.Forms.Label labelXmiTime;
         private System.Windows.Forms.TextBox textBoxSearch;
         private System.Windows.Forms.Label label1;
         private System.Windows.Forms.MenuStrip menuStrip1;
@@ -264,6 +333,7 @@ namespace SteppyBrowser
         private System.Windows.Forms.ToolStripMenuItem exitToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem aboutToolStripMenuItem;
         private System.Windows.Forms.PictureBox pictureBox1;
+        private ModelViewerControl modelViewerControl;
         private System.Windows.Forms.StatusStrip statusStrip1;
         private System.Windows.Forms.ToolStripStatusLabel toolStripStatusLabel1;
         private System.Windows.Forms.ToolStripMenuItem openRecentMenuItem;

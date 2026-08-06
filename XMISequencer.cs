@@ -53,8 +53,17 @@ namespace SteppyBrowser
         // Track end detection
         private bool hasReachedEVNTEnd = false;
         
+        // When true, note on/off commands are not enqueued (used while seeking)
+        private bool suppressNoteCommands = false;
+        
         // Loop flag
         public bool Loop { get; set; }
+
+        /// <summary>Current playback position in seconds.</summary>
+        public double CurrentTime => currentTimeInSong;
+
+        /// <summary>Total duration in seconds. Set by the player from file metadata.</summary>
+        public double Duration { get; set; }
 
         public XMISequencer(string filePath, ConcurrentQueue<XMIMusicCommand> queue, int audioSampleRate = 48000, bool loop = false)
         {
@@ -97,14 +106,22 @@ namespace SteppyBrowser
         /// </summary>
         public void ResetToStart()
         {
+            if (evntChunkEnd <= 0) return;
+
             // Reset reader position to start of EVNT chunk
             reader.BaseStream.Position = evntChunkStart;
             
-            // Reset timing state
+            // Reset timing state and tempo defaults (meta-events will reapply as we play)
+            IsLoaded = true;
             currentTimeInSong = 0.0;
             totalSamplesProcessed = 0;
             hasReachedEVNTEnd = false;
             lastStatus = 0;
+            fileBPM = 120.0;
+            timeSignatureNumerator = 4;
+            timeSignatureDenominator = 4;
+            tpqn = 30;
+            secondsPerTick = (60.0 / 120.0) / tpqn;
             
             // Clear all pending note-offs
             pendingNoteOffs.Clear();
@@ -139,6 +156,48 @@ namespace SteppyBrowser
             int firstDelta = ReadXmiDeltaTime(evntChunkEnd);
             nextEventTimeInSong = firstDelta * secondsPerTick;
         }
+
+        /// <summary>
+        /// Seek to a position in the song. Program/controller state is applied;
+        /// notes that would be in progress at the seek point are not started.
+        /// </summary>
+        public void Seek(double targetTimeSeconds)
+        {
+            if (evntChunkEnd <= 0) return;
+
+            if (targetTimeSeconds < 0) targetTimeSeconds = 0;
+            if (Duration > 0 && targetTimeSeconds > Duration) targetTimeSeconds = Duration;
+
+            ResetToStart();
+
+            if (targetTimeSeconds <= 0)
+                return;
+
+            suppressNoteCommands = true;
+            try
+            {
+                int samplesNeeded = (int)(targetTimeSeconds * sampleRate);
+                const int chunkSize = 44100; // ~1 second per chunk
+                int remaining = samplesNeeded;
+                while (remaining > 0 && IsLoaded)
+                {
+                    int n = remaining > chunkSize ? chunkSize : remaining;
+                    ProcessSamples(n);
+                    remaining -= n;
+
+                    // Stop early if we ran past the end of the event stream
+                    if (hasReachedEVNTEnd && pendingNoteOffs.Count == 0)
+                        break;
+                }
+
+                // Drop any notes that would still be ringing at the seek point
+                pendingNoteOffs.Clear();
+            }
+            finally
+            {
+                suppressNoteCommands = false;
+            }
+        }
         
         /// <summary>
         /// Processes audio samples and fires events with sample-accurate timing.
@@ -165,7 +224,7 @@ namespace SteppyBrowser
             
             // --- 3. Check if track has truly ended ---
             // Track ends when we've processed all EVNT events AND all notes have finished
-            if (hasReachedEVNTEnd && pendingNoteOffs.Count == 0)
+            if (hasReachedEVNTEnd && pendingNoteOffs.Count == 0 && !suppressNoteCommands)
             {
                 if (Loop)
                 {
@@ -246,25 +305,29 @@ namespace SteppyBrowser
                     // Duration in XMI format is a Variable Length Quantity (VLQ)
                     int durationTicks = ReadMidiVLQ(evntChunkEnd);
 
-                    if (velocity > 0)
+                    if (!suppressNoteCommands)
                     {
-                        commandQueue.Enqueue(new XMIMusicCommand { Type = XMIMusicCommandType.NoteOn, Channel = channel, Note = key, Velocity = velocity });
-                        
-                        // Schedule the note-off
-                        double noteOffTime = thisEventTime + (durationTicks * secondsPerTick);
-                        pendingNoteOffs.Add(noteOffTime, channel, key);
-                    }
-                    else
-                    {
-                        // Velocity 0 is a Note Off
-                        commandQueue.Enqueue(new XMIMusicCommand { Type = XMIMusicCommandType.NoteOff, Channel = channel, Note = key });
+                        if (velocity > 0)
+                        {
+                            commandQueue.Enqueue(new XMIMusicCommand { Type = XMIMusicCommandType.NoteOn, Channel = channel, Note = key, Velocity = velocity });
+                            
+                            // Schedule the note-off
+                            double noteOffTime = thisEventTime + (durationTicks * secondsPerTick);
+                            pendingNoteOffs.Add(noteOffTime, channel, key);
+                        }
+                        else
+                        {
+                            // Velocity 0 is a Note Off
+                            commandQueue.Enqueue(new XMIMusicCommand { Type = XMIMusicCommandType.NoteOff, Channel = channel, Note = key });
+                        }
                     }
                     break;
                 
                 case 0x80: // Note Off
                     byte keyOff = reader.ReadByte();
                     reader.ReadByte(); // Skip velocity
-                    commandQueue.Enqueue(new XMIMusicCommand { Type = XMIMusicCommandType.NoteOff, Channel = channel, Note = keyOff });
+                    if (!suppressNoteCommands)
+                        commandQueue.Enqueue(new XMIMusicCommand { Type = XMIMusicCommandType.NoteOff, Channel = channel, Note = keyOff });
                     break;
                 
                 case 0xC0: // Program (Instrument) Change

@@ -21,8 +21,18 @@ namespace SteppyBrowser
         private long totalSamplesProcessed;
         private DateTime lastTickTime;
         private bool disposed = false;
+        private readonly double durationSeconds;
+        private bool paused;
 
         public bool IsPlaying => sequencer != null && sequencer.IsLoaded && playbackTimer != null && playbackTimer.Enabled;
+
+        public bool IsPaused => paused;
+
+        /// <summary>Current playback position in seconds.</summary>
+        public double CurrentPosition => sequencer != null ? sequencer.CurrentTime : 0;
+
+        /// <summary>Total duration in seconds.</summary>
+        public double Duration => durationSeconds;
 
         public XMIPlayer(string xmiFilePath, bool loop = false)
         {
@@ -69,6 +79,10 @@ namespace SteppyBrowser
                 {
                     throw new Exception("Failed to load XMI file");
                 }
+
+                var metadata = XMIFileInfo.GetFileInfo(xmiFilePath);
+                durationSeconds = metadata.Found ? metadata.Duration.TotalSeconds : 0;
+                sequencer.Duration = durationSeconds;
             }
             catch (Exception ex)
             {
@@ -86,13 +100,14 @@ namespace SteppyBrowser
 
         public void Start()
         {
-            if (disposed || sequencer == null || !sequencer.IsLoaded)
+            if (disposed || sequencer == null)
                 return;
 
-            // Reset sequencer
+            // Reset sequencer (also restores IsLoaded after a natural end)
             sequencer.ResetToStart();
             totalSamplesProcessed = 0;
             lastTickTime = DateTime.Now;
+            paused = false;
 
             // Initialize all MIDI channels
             // NAudio uses channels 1-16, MIDI uses 0-15 internally
@@ -106,21 +121,86 @@ namespace SteppyBrowser
             playbackTimer.Start();
         }
 
+        public void Pause()
+        {
+            if (disposed || playbackTimer == null || !playbackTimer.Enabled)
+                return;
+
+            playbackTimer.Stop();
+            SilenceAllNotes();
+            paused = true;
+        }
+
+        public void Resume()
+        {
+            if (disposed || sequencer == null)
+                return;
+
+            // If the track ended, restart from the beginning
+            if (!sequencer.IsLoaded)
+            {
+                Start();
+                return;
+            }
+
+            paused = false;
+            lastTickTime = DateTime.Now;
+            playbackTimer.Start();
+        }
+
         public void Stop()
         {
+            paused = false;
+            playbackTimer?.Stop();
+            SilenceAllNotes();
+        }
+
+        /// <summary>
+        /// Seek to a position in seconds. Notes that would be in progress are not started.
+        /// Preserves pause state: if paused, remains paused after seek.
+        /// </summary>
+        public void Seek(double positionSeconds)
+        {
+            if (disposed || sequencer == null || midiOut == null)
+                return;
+
+            bool shouldPlay = !paused;
             playbackTimer?.Stop();
 
-            // Send All Notes Off to all channels
-            if (midiOut != null)
+            SilenceAllNotes();
+
+            // Discard any queued commands before seeking
+            while (commandQueue.TryDequeue(out _)) { }
+
+            sequencer.Seek(positionSeconds);
+            totalSamplesProcessed = (long)(sequencer.CurrentTime * sampleRate);
+            lastTickTime = DateTime.Now;
+
+            // Apply program/controller state accumulated during the seek
+            ProcessCommandQueue();
+
+            SilenceAllNotes();
+
+            if (shouldPlay && sequencer.IsLoaded)
             {
-                // NAudio uses channels 1-16, MIDI uses 0-15 internally
-                // ChangeControl parameter order: (controller, value, channel)
-                for (int channel = 0; channel < 16; channel++)
-                {
-                    // Controller 123 = All Notes Off, Controller 120 = All Sound Off
-                    midiOut.Send(MidiMessage.ChangeControl(123, 0, channel + 1).RawData);
-                    midiOut.Send(MidiMessage.ChangeControl(120, 0, channel + 1).RawData);
-                }
+                paused = false;
+                playbackTimer.Start();
+            }
+            else if (sequencer.IsLoaded)
+            {
+                paused = true;
+            }
+        }
+
+        private void SilenceAllNotes()
+        {
+            if (midiOut == null) return;
+
+            // NAudio uses channels 1-16, MIDI uses 0-15 internally
+            for (int channel = 0; channel < 16; channel++)
+            {
+                midiOut.Send(MidiMessage.ChangeControl(123, 0, channel + 1).RawData);
+                midiOut.Send(MidiMessage.ChangeControl(120, 0, channel + 1).RawData);
             }
         }
 
@@ -145,7 +225,18 @@ namespace SteppyBrowser
             sequencer.ProcessSamples(samplesToProcess);
             totalSamplesProcessed += samplesToProcess;
 
-            // Process all pending MIDI commands
+            ProcessCommandQueue();
+
+            // Check if playback should stop
+            if (!sequencer.IsLoaded)
+            {
+                paused = false;
+                playbackTimer.Stop();
+            }
+        }
+
+        private void ProcessCommandQueue()
+        {
             while (commandQueue.TryDequeue(out XMIMusicCommand cmd))
             {
                 try
@@ -214,12 +305,6 @@ namespace SteppyBrowser
                     System.Diagnostics.Debug.WriteLine($"Error sending MIDI command: {ex.Message}");
                 }
             }
-
-            // Check if playback should stop
-            if (!sequencer.IsLoaded)
-            {
-                playbackTimer.Stop();
-            }
         }
 
         public void Dispose()
@@ -234,4 +319,3 @@ namespace SteppyBrowser
         }
     }
 }
-

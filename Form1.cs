@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Windows.Forms;
 using System.Diagnostics;
@@ -7,6 +7,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Xml.Serialization;
 using System.Collections.Generic;
+using System.Linq;
 using NAudio.Wave;
 using NAudio.Vorbis;
 
@@ -19,9 +20,12 @@ namespace SteppyBrowser
         private XMIPlayer xmiPlayer;
         private string rootPath = "";
         private string currentImagePath;
+        private string currentModelPath;
         private string currentFilePath = ""; // Track currently playing/displayed file
         private List<string> recentFolders = new List<string>();
         private const string recentFoldersFile = "RecentFolders.xml";
+        private System.Windows.Forms.Timer audioScrubTimer;
+        private bool audioScrubbing;
 
         public Form1()
         {
@@ -29,6 +33,10 @@ namespace SteppyBrowser
             StartPosition = FormStartPosition.CenterScreen;
             waveOut = new WaveOutEvent();
             LoadRecentFolders();
+
+            audioScrubTimer = new System.Windows.Forms.Timer();
+            audioScrubTimer.Interval = 100;
+            audioScrubTimer.Tick += AudioScrubTimer_Tick;
         }
 
         private void PopulateRecentFoldersMenu(ToolStripMenuItem openRecentMenuItem)
@@ -135,6 +143,8 @@ namespace SteppyBrowser
             (audioFileReader as IDisposable)?.Dispose();
             xmiPlayer?.Stop();
             xmiPlayer?.Dispose();
+            audioScrubTimer?.Stop();
+            audioScrubTimer?.Dispose();
         }
 
         private void PopulateTreeView(TreeView treeView, string path)
@@ -199,9 +209,11 @@ namespace SteppyBrowser
                     waveOut?.Stop();
                     (audioFileReader as WaveStream)?.Dispose();
                     (audioFileReader as IDisposable)?.Dispose();
+                    audioFileReader = null;
                     xmiPlayer?.Stop();
                     xmiPlayer?.Dispose();
                     xmiPlayer = null;
+                    HideAudioScrubBar();
 
                     try
                     {
@@ -212,18 +224,21 @@ namespace SteppyBrowser
                             xmiPlayer = new XMIPlayer(filePath, false);
                             xmiPlayer.Start();
                             DisplayXmiFileInfo(filePath);
+                            ShowAudioScrubBar();
                         }
                         else if (extension == ".ogg")
                         {
                             audioFileReader = new VorbisWaveReader(filePath);
                             waveOut.Init(audioFileReader);
                             waveOut.Play();
+                            ShowAudioScrubBar();
                         }
                         else if (extension == ".mp3")
                         {
                             audioFileReader = new Mp3FileReader(filePath);
                             waveOut.Init(audioFileReader);
                             waveOut.Play();
+                            ShowAudioScrubBar();
                         }
                         else if (extension == ".voc")
                         {
@@ -231,12 +246,14 @@ namespace SteppyBrowser
                             waveOut.Init(audioFileReader);
                             waveOut.Play();
                             DisplayVocFileInfo(filePath);
+                            ShowAudioScrubBar();
                         }
                         else
                         {
                             audioFileReader = new AudioFileReader(filePath);
                             waveOut.Init(audioFileReader);
                             waveOut.Play();
+                            ShowAudioScrubBar();
                         }
 
                         if (extension != ".xmi" && extension != ".voc")
@@ -281,17 +298,28 @@ namespace SteppyBrowser
                     DisplayImage(filePath);
                     return; // Early return since we've handled the refresh
                 }
+                else if (IsModelFile(filePath))
+                {
+                    DisplayModel(filePath);
+                    return;
+                }
             }
 
             // Different file - stop current playback and start new one
             waveOut?.Stop();
             (audioFileReader as WaveStream)?.Dispose();
             (audioFileReader as IDisposable)?.Dispose();
+            audioFileReader = null;
             xmiPlayer?.Stop();
             xmiPlayer?.Dispose();
             xmiPlayer = null;
+            HideAudioScrubBar();
             textBox1.Text = "";
             pictureBox1.Image = null;
+            currentImagePath = null;
+            currentModelPath = null;
+            modelViewerControl.ClearMesh();
+            modelViewerControl.Visible = false;
             toolStripStatusLabel1.Text = "";
 
             if (File.Exists(filePath))
@@ -300,6 +328,7 @@ namespace SteppyBrowser
                 {
                     textBox1.Visible = true;
                     pictureBox1.Visible = false;
+                    modelViewerControl.Visible = false;
 
                     try
                     {
@@ -310,12 +339,14 @@ namespace SteppyBrowser
                             xmiPlayer = new XMIPlayer(filePath, false);
                             xmiPlayer.Start();
                             DisplayXmiFileInfo(filePath);
+                            ShowAudioScrubBar();
                         }
                         else if (extension == ".ogg")
                         {
                             audioFileReader = new VorbisWaveReader(filePath);
                             waveOut.Init(audioFileReader);
                             waveOut.Play();
+                            ShowAudioScrubBar();
                             
                             try
                             {
@@ -335,6 +366,7 @@ namespace SteppyBrowser
                             audioFileReader = new Mp3FileReader(filePath);
                             waveOut.Init(audioFileReader);
                             waveOut.Play();
+                            ShowAudioScrubBar();
                             
                             try
                             {
@@ -355,12 +387,14 @@ namespace SteppyBrowser
                             waveOut.Init(audioFileReader);
                             waveOut.Play();
                             DisplayVocFileInfo(filePath);
+                            ShowAudioScrubBar();
                         }
                         else
                         {
                             audioFileReader = new AudioFileReader(filePath);
                             waveOut.Init(audioFileReader);
                             waveOut.Play();
+                            ShowAudioScrubBar();
 
                             try
                             {
@@ -385,6 +419,7 @@ namespace SteppyBrowser
                 {
                     textBox1.Visible = true;
                     pictureBox1.Visible = false;
+                    modelViewerControl.Visible = false;
 
                     try
                     {
@@ -400,8 +435,20 @@ namespace SteppyBrowser
                 {
                     textBox1.Visible = false;
                     pictureBox1.Visible = true;
+                    modelViewerControl.Visible = false;
+                    modelViewerControl.ClearMesh();
+                    currentModelPath = null;
                     currentImagePath = filePath;
                     DisplayImage(filePath);
+                }
+                else if (IsModelFile(filePath))
+                {
+                    textBox1.Visible = false;
+                    pictureBox1.Visible = false;
+                    modelViewerControl.Visible = true;
+                    currentImagePath = null;
+                    currentModelPath = filePath;
+                    DisplayModel(filePath);
                 }
             }
 
@@ -429,9 +476,11 @@ namespace SteppyBrowser
                     waveOut?.Stop();
                     (audioFileReader as WaveStream)?.Dispose();
                     (audioFileReader as IDisposable)?.Dispose();
+                    audioFileReader = null;
                     xmiPlayer?.Stop();
                     xmiPlayer?.Dispose();
                     xmiPlayer = null;
+                    HideAudioScrubBar();
 
                     try
                     {
@@ -442,12 +491,14 @@ namespace SteppyBrowser
                             xmiPlayer = new XMIPlayer(filePath, false);
                             xmiPlayer.Start();
                             DisplayXmiFileInfo(filePath);
+                            ShowAudioScrubBar();
                         }
                         else if (extension == ".ogg")
                         {
                             audioFileReader = new VorbisWaveReader(filePath);
                             waveOut.Init(audioFileReader);
                             waveOut.Play();
+                            ShowAudioScrubBar();
                             
                             try
                             {
@@ -467,6 +518,7 @@ namespace SteppyBrowser
                             audioFileReader = new Mp3FileReader(filePath);
                             waveOut.Init(audioFileReader);
                             waveOut.Play();
+                            ShowAudioScrubBar();
                             
                             try
                             {
@@ -487,12 +539,14 @@ namespace SteppyBrowser
                             waveOut.Init(audioFileReader);
                             waveOut.Play();
                             DisplayVocFileInfo(filePath);
+                            ShowAudioScrubBar();
                         }
                         else
                         {
                             audioFileReader = new AudioFileReader(filePath);
                             waveOut.Init(audioFileReader);
                             waveOut.Play();
+                            ShowAudioScrubBar();
                             
                             try
                             {
@@ -531,6 +585,10 @@ namespace SteppyBrowser
                     // Refresh image display
                     DisplayImage(filePath);
                 }
+                else if (IsModelFile(filePath))
+                {
+                    DisplayModel(filePath);
+                }
             }
         }
 
@@ -552,13 +610,22 @@ namespace SteppyBrowser
             {
                 DisplayImage(currentImagePath); // Refresh the image
             }
+            else if (!string.IsNullOrEmpty(currentModelPath))
+            {
+                modelViewerControl.Invalidate();
+            }
         }
 
         private void DisplayImage(string filePath)
         {
             try
             {
-                Image image = Image.FromFile(filePath);
+                Image image;
+                string ext = Path.GetExtension(filePath).ToLower();
+                if (ext == ".tga" || ext == ".targa")
+                    image = TgaImage.LoadBitmap(filePath);
+                else
+                    image = Image.FromFile(filePath);
 
                 // Calculate the aspect ratio
                 float aspectRatio = (float)image.Width / image.Height;
@@ -609,7 +676,34 @@ namespace SteppyBrowser
         private bool IsImageFile(string filePath)
         {
             string extension = Path.GetExtension(filePath).ToLower();
-            return extension == ".jpg" || extension == ".jpeg" || extension == ".png" || extension == ".bmp" || extension == ".gif"; // Add more if needed
+            return extension == ".jpg" || extension == ".jpeg" || extension == ".png" || extension == ".bmp" || extension == ".gif"
+                || extension == ".tga" || extension == ".targa";
+        }
+
+        private bool IsModelFile(string filePath)
+        {
+            string extension = Path.GetExtension(filePath).ToLower();
+            return extension == ".fbx" || extension == ".obj" || extension == ".mdl";
+        }
+
+        private void DisplayModel(string filePath)
+        {
+            try
+            {
+                ModelMeshStats stats = modelViewerControl.LoadModel(filePath);
+                textBox1.Visible = false;
+                textBox1.Text = "";
+                toolStripStatusLabel1.Text = $"{Path.GetFileName(filePath)} — Verts={stats.Vertices:N0} Tris={stats.Triangles:N0} Polys={stats.Polygons:N0}";
+            }
+            catch (Exception ex)
+            {
+                currentModelPath = null;
+                textBox1.Visible = true;
+                textBox1.Text = $"Error loading model: {ex.Message}";
+                toolStripStatusLabel1.Text = "Model load failed";
+                modelViewerControl.ClearMesh();
+                modelViewerControl.Visible = false;
+            }
         }
 
         private void Form1_KeyDown(object sender, KeyEventArgs e)
@@ -716,30 +810,31 @@ namespace SteppyBrowser
             treeView1.BeginUpdate();
             treeView1.Nodes.Clear();
 
-            if (string.IsNullOrEmpty(searchText))
+            if (string.IsNullOrWhiteSpace(searchText))
             {
                 PopulateTreeView(treeView1, rootPath);
             }
             else
             {
-                PopulateTreeViewWithFilteredFolders(treeView1, rootPath, searchText);
+                string[] searchTerms = searchText.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                PopulateTreeViewWithFilteredFolders(treeView1, rootPath, searchTerms);
                 treeView1.ExpandAll(); // Expand all nodes after populating
             }
             treeView1.EndUpdate();
         }
 
-        private void PopulateTreeViewWithFilteredFolders(TreeView treeView, string path, string filter)
+        private void PopulateTreeViewWithFilteredFolders(TreeView treeView, string path, string[] searchTerms)
         {
             TreeNode rootNode = new TreeNode(path);
             rootNode.Tag = path;
 
-            if (GetDirectoriesWithFilteredFiles(rootNode, filter)) // Check if any matches were found in this branch
+            if (GetDirectoriesWithFilteredFiles(rootNode, searchTerms)) // Check if any matches were found in this branch
             {
                 treeView.Nodes.Add(rootNode);
             }
         }
 
-        private bool GetDirectoriesWithFilteredFiles(TreeNode node, string filter)
+        private bool GetDirectoriesWithFilteredFiles(TreeNode node, string[] searchTerms)
         {
             bool hasMatches = false; // Flag to track matches in this branch
 
@@ -751,7 +846,11 @@ namespace SteppyBrowser
                     TreeNode subNode = new TreeNode(Path.GetFileName(subDirectory));
                     subNode.Tag = subDirectory;
 
-                    if (GetDirectoriesWithFilteredFiles(subNode, filter)) // Recursive call, check for matches in subfolders
+                    string directoryName = Path.GetFileName(subDirectory).ToLower();
+                    bool directoryNameMatches = searchTerms.Any(term => directoryName.Contains(term));
+                    bool hasMatchingFiles = GetDirectoriesWithFilteredFiles(subNode, searchTerms); // Recursive call, check for matches in subfolders
+                    
+                    if (directoryNameMatches || hasMatchingFiles)
                     {
                         node.Nodes.Add(subNode);
                         hasMatches = true; // A match was found in a subfolder, so this folder also counts
@@ -761,7 +860,8 @@ namespace SteppyBrowser
                 string[] files = Directory.GetFiles(node.Tag.ToString());
                 foreach (string file in files)
                 {
-                    if (Path.GetFileName(file).ToLower().Contains(filter))
+                    string fileName = Path.GetFileName(file).ToLower();
+                    if (searchTerms.Any(term => fileName.Contains(term)))
                     {
                         TreeNode fileNode = new TreeNode(Path.GetFileName(file));
                         fileNode.Tag = file;
@@ -859,6 +959,187 @@ namespace SteppyBrowser
                            + $"Time Signature: {metadata.TimeSignatureNumerator}/{metadata.TimeSignatureDenominator}" + Environment.NewLine
                            + $"Events: {metadata.EventCount}" + Environment.NewLine
                            + "Using Windows MIDI Synthesizer";
+        }
+
+        private void ShowAudioScrubBar()
+        {
+            trackBarXmi.Value = 0;
+            UpdateAudioTimeLabel(0, GetAudioDuration());
+            UpdatePlayPauseButton();
+            panelXmiScrub.Visible = true;
+            audioScrubTimer.Start();
+        }
+
+        private void HideAudioScrubBar()
+        {
+            audioScrubTimer.Stop();
+            audioScrubbing = false;
+            panelXmiScrub.Visible = false;
+            trackBarXmi.Value = 0;
+            labelXmiTime.Text = "0:00 / 0:00";
+            buttonAudioPlayPause.Text = "Pause";
+        }
+
+        private double GetAudioPosition()
+        {
+            if (xmiPlayer != null)
+                return xmiPlayer.CurrentPosition;
+
+            var stream = audioFileReader as WaveStream;
+            return stream?.CurrentTime.TotalSeconds ?? 0;
+        }
+
+        private double GetAudioDuration()
+        {
+            if (xmiPlayer != null)
+                return xmiPlayer.Duration;
+
+            var stream = audioFileReader as WaveStream;
+            return stream?.TotalTime.TotalSeconds ?? 0;
+        }
+
+        private bool IsAudioPlaying()
+        {
+            if (xmiPlayer != null)
+                return xmiPlayer.IsPlaying;
+
+            return waveOut != null && waveOut.PlaybackState == PlaybackState.Playing;
+        }
+
+        private void SeekAudio(double positionSeconds)
+        {
+            if (xmiPlayer != null)
+            {
+                xmiPlayer.Seek(positionSeconds);
+                return;
+            }
+
+            var stream = audioFileReader as WaveStream;
+            if (stream == null)
+                return;
+
+            double duration = stream.TotalTime.TotalSeconds;
+            if (duration <= 0)
+                return;
+
+            if (positionSeconds < 0) positionSeconds = 0;
+            if (positionSeconds > duration) positionSeconds = duration;
+            stream.CurrentTime = TimeSpan.FromSeconds(positionSeconds);
+        }
+
+        private void ToggleAudioPlayPause()
+        {
+            if (xmiPlayer != null)
+            {
+                if (xmiPlayer.IsPlaying)
+                    xmiPlayer.Pause();
+                else
+                    xmiPlayer.Resume();
+            }
+            else if (waveOut != null && audioFileReader != null)
+            {
+                if (waveOut.PlaybackState == PlaybackState.Playing)
+                {
+                    waveOut.Pause();
+                }
+                else
+                {
+                    // Restart from beginning if the stream already finished
+                    var stream = audioFileReader as WaveStream;
+                    if (stream != null && stream.Position >= stream.Length && stream.Length > 0)
+                        stream.Position = 0;
+                    waveOut.Play();
+                }
+            }
+
+            UpdatePlayPauseButton();
+        }
+
+        private void UpdatePlayPauseButton()
+        {
+            buttonAudioPlayPause.Text = IsAudioPlaying() ? "Pause" : "Play";
+        }
+
+        private void AudioScrubTimer_Tick(object sender, EventArgs e)
+        {
+            if (audioScrubbing)
+                return;
+
+            if (xmiPlayer == null && audioFileReader == null)
+                return;
+
+            double position = GetAudioPosition();
+            double duration = GetAudioDuration();
+            if (duration <= 0)
+            {
+                UpdateAudioTimeLabel(position, 0);
+                UpdatePlayPauseButton();
+                return;
+            }
+
+            int value = (int)Math.Round(position / duration * trackBarXmi.Maximum);
+            if (value < 0) value = 0;
+            if (value > trackBarXmi.Maximum) value = trackBarXmi.Maximum;
+            trackBarXmi.Value = value;
+            UpdateAudioTimeLabel(position, duration);
+            UpdatePlayPauseButton();
+        }
+
+        private void UpdateAudioTimeLabel(double positionSeconds, double durationSeconds)
+        {
+            labelXmiTime.Text = $"{FormatAudioTime(positionSeconds)} / {FormatAudioTime(durationSeconds)}";
+        }
+
+        private static string FormatAudioTime(double totalSeconds)
+        {
+            if (totalSeconds < 0) totalSeconds = 0;
+            int minutes = (int)(totalSeconds / 60);
+            int seconds = (int)(totalSeconds % 60);
+            return $"{minutes}:{seconds:D2}";
+        }
+
+        private void buttonAudioPlayPause_Click(object sender, EventArgs e)
+        {
+            ToggleAudioPlayPause();
+        }
+
+        private void trackBarXmi_MouseDown(object sender, MouseEventArgs e)
+        {
+            audioScrubbing = true;
+        }
+
+        private void trackBarXmi_MouseUp(object sender, MouseEventArgs e)
+        {
+            SeekAudioFromTrackBar();
+            audioScrubbing = false;
+        }
+
+        private void trackBarXmi_KeyUp(object sender, KeyEventArgs e)
+        {
+            SeekAudioFromTrackBar();
+            audioScrubbing = false;
+        }
+
+        private void SeekAudioFromTrackBar()
+        {
+            double duration = GetAudioDuration();
+            if (duration <= 0)
+                return;
+
+            double position = trackBarXmi.Value / (double)trackBarXmi.Maximum * duration;
+            SeekAudio(position);
+            UpdateAudioTimeLabel(position, duration);
+            UpdatePlayPauseButton();
+        }
+
+        private void trackBarXmi_Scroll(object sender, EventArgs e)
+        {
+            audioScrubbing = true;
+            double duration = GetAudioDuration();
+            double position = duration > 0
+                ? trackBarXmi.Value / (double)trackBarXmi.Maximum * duration
+                : 0;
+            UpdateAudioTimeLabel(position, duration);
         }
 
     }

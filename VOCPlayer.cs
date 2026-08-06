@@ -10,11 +10,11 @@ namespace SteppyBrowser
     public static class VOCPlayer
     {
         /// <summary>
-        /// Creates an IWaveProvider from a VOC file for playback
+        /// Creates a seekable WaveStream from a VOC file for playback
         /// </summary>
-        public static IWaveProvider CreateWaveProvider(string fileName)
+        public static WaveStream CreateWaveProvider(string fileName)
         {
-            IWaveProvider waveProvider = null;
+            WaveStream waveProvider = null;
 
             byte[] data = File.ReadAllBytes(fileName);
             string header = "";
@@ -51,7 +51,7 @@ namespace SteppyBrowser
                         // Create NAudio WaveFormat (Important: Use IeeeFloat)
                         WaveFormat waveFormat = WaveFormat.CreateIeeeFloatWaveFormat(hertz, 1);
 
-                        // Create NAudio IWaveProvider from float array
+                        // Create seekable stream from float array
                         waveProvider = new RawSourceFloatWaveProvider(samples, waveFormat);
                     }
                     else if (blockType == 8)
@@ -69,13 +69,13 @@ namespace SteppyBrowser
         }
 
         /// <summary>
-        /// Internal class for providing audio data from a float array
+        /// Internal class for providing seekable audio data from a float array
         /// </summary>
-        internal class RawSourceFloatWaveProvider : IWaveProvider
+        internal class RawSourceFloatWaveProvider : WaveStream
         {
             private readonly float[] source;
             private readonly WaveFormat waveFormat;
-            private int position;
+            private long position;
 
             public RawSourceFloatWaveProvider(float[] source, WaveFormat waveFormat)
             {
@@ -83,17 +83,34 @@ namespace SteppyBrowser
                 this.waveFormat = waveFormat;
             }
 
-            public int Read(byte[] buffer, int offset, int count)
+            public override WaveFormat WaveFormat => waveFormat;
+
+            public override long Length => source.Length * 4L;
+
+            public override long Position
             {
-                int sourceIndex = position * waveFormat.Channels;
+                get => position;
+                set
+                {
+                    long aligned = value - (value % waveFormat.BlockAlign);
+                    if (aligned < 0) aligned = 0;
+                    if (aligned > Length) aligned = Length;
+                    position = aligned;
+                }
+            }
+
+            public override int Read(byte[] buffer, int offset, int count)
+            {
+                int sourceIndex = (int)(position / 4);
                 int sourceSamplesRemaining = source.Length - sourceIndex;
                 int destBytesRemaining = buffer.Length - offset;
                 int bytesToCopy = Math.Min(Math.Min(destBytesRemaining, sourceSamplesRemaining * 4), count);
+                bytesToCopy -= bytesToCopy % waveFormat.BlockAlign;
 
                 if (bytesToCopy > 0)
                 {
                     Buffer.BlockCopy(source, sourceIndex * 4, buffer, offset, bytesToCopy);
-                    position += bytesToCopy / (waveFormat.Channels * 4);
+                    position += bytesToCopy;
                 }
                 else
                 {
@@ -102,16 +119,6 @@ namespace SteppyBrowser
 
                 return bytesToCopy;
             }
-
-            public WaveFormat WaveFormat
-            {
-                get { return waveFormat; }
-            }
         }
     }
 }
-
-
-
-
-
