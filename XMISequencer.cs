@@ -35,20 +35,18 @@ namespace SteppyBrowser
 
         // Constant for "FORM" read as a Big-Endian int
         private const int FORM_AS_INT = 1179603533;
+
+        // AIL XMIDI quantizes to a fixed clock (default 120 Hz). QUANT_TIME is microseconds per
+        // quant interval from XMIDI32.ASM (1e6/120 ≈ 8333). EVNT deltas and note durations are
+        // already in these intervals — vestigial tempo/time-sig metas must not retune the clock.
+        private const double QuantTimeMicroseconds = 8333.0;
+        private const double SecondsPerQuant = QuantTimeMicroseconds / 1_000_000.0;
         
         // Preallocated buffer to manage note-offs for XMI's "Note On + Duration" format
         private readonly XMINoteOffBuffer pendingNoteOffs;
 
-        // Ticks Per Quarter Note (Timebase) - calculated from meta-events
-        private int tpqn = 30; // Default until we extract from file
-
-        // We'll calculate the secondsPerTick based on the BPM and TPQN.
-        private double secondsPerTick;
-        
-        // Track meta-event data for TPQN calculation
-        private double fileBPM = 120.0; // Default
-        private int timeSignatureNumerator = 4;
-        private int timeSignatureDenominator = 4;
+        // Seconds per XMI delta/duration unit (fixed AIL quant clock)
+        private readonly double secondsPerTick = SecondsPerQuant;
         
         // Track end detection
         private bool hasReachedEVNTEnd = false;
@@ -71,9 +69,6 @@ namespace SteppyBrowser
             sampleRate = audioSampleRate;
             Loop = loop;
             pendingNoteOffs = new XMINoteOffBuffer(512); // Preallocate buffer (adjust size if needed)
-            
-            // Set the default tempo (120 BPM) using the provided TPQN
-            secondsPerTick = (60.0 / 120.0) / this.tpqn;
 
             try
             {
@@ -111,17 +106,12 @@ namespace SteppyBrowser
             // Reset reader position to start of EVNT chunk
             reader.BaseStream.Position = evntChunkStart;
             
-            // Reset timing state and tempo defaults (meta-events will reapply as we play)
+            // Reset timing state
             IsLoaded = true;
             currentTimeInSong = 0.0;
             totalSamplesProcessed = 0;
             hasReachedEVNTEnd = false;
             lastStatus = 0;
-            fileBPM = 120.0;
-            timeSignatureNumerator = 4;
-            timeSignatureDenominator = 4;
-            tpqn = 30;
-            secondsPerTick = (60.0 / 120.0) / tpqn;
             
             // Clear all pending note-offs
             pendingNoteOffs.Clear();
@@ -239,17 +229,6 @@ namespace SteppyBrowser
             }
         }
         
-        private void CalculateSecondsPerTick()
-        {
-            if (fileBPM > 0)
-            {
-                double timeSigRatio = (double)timeSignatureNumerator / timeSignatureDenominator;
-                tpqn = (int)Math.Round(8333.0 / (fileBPM * timeSigRatio)); // QUANT_TIME equ 8333 from XMIDI32.ASM in AIL source
-                double secondsPerQuarterNote = 60.0 / fileBPM;
-                secondsPerTick = secondsPerQuarterNote / tpqn;
-            }
-        }
-
         /// <summary>
         /// This function is called *only* when the song clock has reached
         /// the time for the next scheduled event.
@@ -363,35 +342,13 @@ namespace SteppyBrowser
                 case 0xF0: 
                     if (status == 0xFF) 
                     {
-                        byte metaType = reader.ReadByte(); 
+                        reader.ReadByte(); // meta type (tempo/timesig are vestigial; ignore all metas for timing)
                         int length = ReadMidiVLQ(evntChunkEnd); // VLQ is correct for meta-events
 
-                        if (metaType == 0x51 && length == 3) // Set Tempo
-                        {
-                            int a = reader.ReadByte();
-                            int b = reader.ReadByte();
-                            int c = reader.ReadByte();
-                            int microsecondsPerQuarterNote = (a << 16) | (b << 8) | c;
-                            fileBPM = 60_000_000.0 / microsecondsPerQuarterNote;
-                            
-                            CalculateSecondsPerTick();
-                        }
-                        else if (metaType == 0x58 && length == 4) // Time Signature
-                        {
-                            byte numerator = reader.ReadByte();
-                            byte denominatorPower = reader.ReadByte();
-                            reader.ReadByte(); // ClocksPerClick
-                            reader.ReadByte(); // 32nds per quarter
-                            
-                            timeSignatureNumerator = numerator;
-                            timeSignatureDenominator = 1 << denominatorPower;
-
-                            CalculateSecondsPerTick();
-                        }
-                        else
-                        {
-                            reader.ReadBytes(length);
-                        }
+                        // Tempo (0x51) and time signature (0x58) are vestigial leftovers from the
+                        // pre-quantized MIDI source. AIL plays XMI on a fixed 120 Hz quant clock;
+                        // applying these metas makes tracks run too fast. Skip payload only.
+                        reader.ReadBytes(length);
                     }
                     else if (status == 0xF0) // SysEx Start
                     {
@@ -628,6 +585,10 @@ namespace SteppyBrowser
     {
         private const int FORM_AS_INT = 1179603533;
 
+        // Same fixed AIL 120 Hz quant clock used by XMISequencer (QUANT_TIME ≈ 8333 µs)
+        private const double QuantTimeMicroseconds = 8333.0;
+        private const double SecondsPerQuant = QuantTimeMicroseconds / 1_000_000.0;
+
         public class XMIMetadata
         {
             public TimeSpan Duration { get; set; }
@@ -666,14 +627,13 @@ namespace SteppyBrowser
                         return metadata;
                     }
                     
-                    // Parse events to extract tempo, time signature, and calculate duration
+                    // Parse events using fixed AIL 120 Hz quant clock for duration
                     fileStream.Position = evntChunkStart;
                     double currentTime = 0;
                     double fileBPM = 120.0;
                     int timeSigNum = 4;
                     int timeSigDen = 4;
-                    int tpqn = 30;
-                    double secondsPerTick = (60.0 / fileBPM) / tpqn;
+                    const double secondsPerTick = SecondsPerQuant;
                     int eventCount = 0;
                     double lastEventTime = 0;
                     
@@ -731,7 +691,9 @@ namespace SteppyBrowser
                                 b = reader.ReadByte();
                                 length = (length << 7) | (b & 0x7F);
                             } while ((b & 0x80) != 0);
-                            
+
+                            // Tempo/time-sig metas are vestigial for timing (fixed 120 Hz quant).
+                            // Still record them for display metadata only.
                             if (metaType == 0x51 && length == 3) // Set Tempo
                             {
                                 int a = reader.ReadByte();
@@ -739,12 +701,6 @@ namespace SteppyBrowser
                                 int c = reader.ReadByte();
                                 int microsecondsPerQuarterNote = (a << 16) | (b1 << 8) | c;
                                 fileBPM = 60_000_000.0 / microsecondsPerQuarterNote;
-                                
-                                // Recalculate secondsPerTick
-                                double timeSigRatio = (double)timeSigNum / timeSigDen;
-                                tpqn = (int)Math.Round(8333.0 / (fileBPM * timeSigRatio));
-                                double secondsPerQuarterNote = 60.0 / fileBPM;
-                                secondsPerTick = secondsPerQuarterNote / tpqn;
                             }
                             else if (metaType == 0x58 && length == 4) // Time Signature
                             {
@@ -753,12 +709,6 @@ namespace SteppyBrowser
                                 reader.ReadByte(); // ClocksPerClick
                                 reader.ReadByte(); // 32nds per quarter
                                 timeSigDen = 1 << denominatorPower;
-                                
-                                // Recalculate secondsPerTick
-                                double timeSigRatio = (double)timeSigNum / timeSigDen;
-                                tpqn = (int)Math.Round(8333.0 / (fileBPM * timeSigRatio));
-                                double secondsPerQuarterNote = 60.0 / fileBPM;
-                                secondsPerTick = secondsPerQuarterNote / tpqn;
                             }
                             else
                             {
