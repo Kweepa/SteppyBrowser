@@ -103,6 +103,9 @@
     <Reference Include="TagLibSharp, Version=2.3.0.0, Culture=neutral, PublicKeyToken=db62eba44689b5b0, processorArchitecture=MSIL">
       <HintPath>packages\TagLibSharp.2.3.0\lib\net462\TagLibSharp.dll</HintPath>
     </Reference>
+    <Reference Include="SharpSid">
+      <HintPath>packages\GeorgRottensteiner.SharpSid.0.9.5\lib\net40\SharpSid.dll</HintPath>
+    </Reference>
     <Reference Include="AssimpNet">
       <HintPath>packages\AssimpNet.5.0.0-beta1\lib\net40\AssimpNet.dll</HintPath>
     </Reference>
@@ -132,6 +135,7 @@
     <Compile Include="XMINoteOffBuffer.cs" />
     <Compile Include="XMISequencer.cs" />
     <Compile Include="XMIPlayer.cs" />
+    <Compile Include="SIDPlayer.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <EmbeddedResource Include="Form1.resx">
       <DependentUpon>Form1.cs</DependentUpon>
@@ -148,6 +152,9 @@
     </Compile>
     <None Include="app.manifest" />
     <None Include="packages.config" />
+    <None Include="naudio110\NAudio.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
