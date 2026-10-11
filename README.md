@@ -6,7 +6,7 @@ A Windows Forms application for browsing and playing audio files, images, and te
 
 - **Audio Playback**: Supports multiple audio formats including WAV, MP3, OGG, WMA, VOC, and XMI files
 - **XMI Playback**: Plays XMI (Extended MIDI) files using Windows' built-in MIDI synthesizer
-- **Image Viewer**: Displays common image formats (JPG, PNG, BMP, GIF)
+- **Image Viewer**: Displays common image formats (JPG, PNG, BMP, GIF) and Commodore 64 Koala pictures
 - **Text Viewer**: View text files, logs, and URL files
 - **File Browser**: Tree view navigation with search functionality
 - **Recent Folders**: Remembers recently opened folders
@@ -27,6 +27,7 @@ A Windows Forms application for browsing and playing audio files, images, and te
 - PNG
 - BMP
 - GIF
+- Koala Painter (KOA, KLA) — Commodore 64 multicolor, VICE Pepto NTSC colors
 
 ### Text
 - TXT

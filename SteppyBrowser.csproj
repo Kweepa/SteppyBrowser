@@ -122,6 +122,7 @@
     </Compile>
     <Compile Include="Program.cs" />
     <Compile Include="TgaImage.cs" />
+    <Compile Include="KoalaImage.cs" />
     <Compile Include="ModelViewerControl.cs">
       <SubType>UserControl</SubType>
     </Compile>

@@ -624,6 +624,8 @@ namespace SteppyBrowser
                 string ext = Path.GetExtension(filePath).ToLower();
                 if (ext == ".tga" || ext == ".targa")
                     image = TgaImage.LoadBitmap(filePath);
+                else if (ext == ".koa" || ext == ".kla" || ext == ".koala")
+                    image = KoalaImage.LoadBitmap(filePath);
                 else
                     image = Image.FromFile(filePath);
 
@@ -677,7 +679,8 @@ namespace SteppyBrowser
         {
             string extension = Path.GetExtension(filePath).ToLower();
             return extension == ".jpg" || extension == ".jpeg" || extension == ".png" || extension == ".bmp" || extension == ".gif"
-                || extension == ".tga" || extension == ".targa";
+                || extension == ".tga" || extension == ".targa"
+                || extension == ".koa" || extension == ".kla" || extension == ".koala";
         }
 
         private bool IsModelFile(string filePath)
