@@ -18,6 +18,7 @@ namespace SteppyBrowser
         private IWavePlayer waveOut;
         private IWaveProvider audioFileReader;
         private XMIPlayer xmiPlayer;
+        private MidiPlayer midiPlayer;
         private SIDPlayer sidPlayer;
         private string rootPath = "";
         private string currentImagePath;
@@ -145,6 +146,7 @@ namespace SteppyBrowser
             xmiPlayer?.Stop();
             xmiPlayer?.Dispose();
             StopSidPlayer();
+            StopMidiPlayer();
             audioScrubTimer?.Stop();
             audioScrubTimer?.Dispose();
         }
@@ -216,6 +218,7 @@ namespace SteppyBrowser
                     xmiPlayer?.Dispose();
                     xmiPlayer = null;
                     StopSidPlayer();
+                    StopMidiPlayer();
                     HideAudioScrubBar();
 
                     try
@@ -228,6 +231,10 @@ namespace SteppyBrowser
                             xmiPlayer.Start();
                             DisplayXmiFileInfo(filePath);
                             ShowAudioScrubBar();
+                        }
+                        else if (extension == ".mid")
+                        {
+                            PlayMidiFile(filePath);
                         }
                         else if (extension == ".ogg")
                         {
@@ -263,7 +270,7 @@ namespace SteppyBrowser
                             ShowAudioScrubBar();
                         }
 
-                        if (extension != ".xmi" && extension != ".voc" && extension != ".sid")
+                        if (extension != ".xmi" && extension != ".voc" && extension != ".sid" && extension != ".mid")
                         {
                             try
                             {
@@ -321,6 +328,7 @@ namespace SteppyBrowser
             xmiPlayer?.Dispose();
             xmiPlayer = null;
             StopSidPlayer();
+            StopMidiPlayer();
             HideAudioScrubBar();
             textBox1.Text = "";
             pictureBox1.Image = null;
@@ -348,6 +356,10 @@ namespace SteppyBrowser
                             xmiPlayer.Start();
                             DisplayXmiFileInfo(filePath);
                             ShowAudioScrubBar();
+                        }
+                        else if (extension == ".mid")
+                        {
+                            PlayMidiFile(filePath);
                         }
                         else if (extension == ".ogg")
                         {
@@ -493,6 +505,7 @@ namespace SteppyBrowser
                     xmiPlayer?.Dispose();
                     xmiPlayer = null;
                     StopSidPlayer();
+                    StopMidiPlayer();
                     HideAudioScrubBar();
 
                     try
@@ -505,6 +518,10 @@ namespace SteppyBrowser
                             xmiPlayer.Start();
                             DisplayXmiFileInfo(filePath);
                             ShowAudioScrubBar();
+                        }
+                        else if (extension == ".mid")
+                        {
+                            PlayMidiFile(filePath);
                         }
                         else if (extension == ".ogg")
                         {
@@ -612,7 +629,7 @@ namespace SteppyBrowser
         private bool IsAudioFile(string filePath)
         {
             string extension = Path.GetExtension(filePath).ToLower();
-            return extension == ".wav" || extension == ".mp3" || extension == ".wma" || extension == ".ogg" || extension == ".voc" || extension == ".xmi" || extension == ".sid";
+            return extension == ".wav" || extension == ".mp3" || extension == ".wma" || extension == ".ogg" || extension == ".voc" || extension == ".xmi" || extension == ".mid" || extension == ".sid";
         }
 
         private bool IsTextFile(string filePath)
@@ -633,6 +650,14 @@ namespace SteppyBrowser
             }
         }
 
+        private void ShowImageError(string message)
+        {
+            pictureBox1.Image = null;
+            pictureBox1.Visible = false;
+            textBox1.Visible = true;
+            textBox1.Text = message;
+        }
+
         private void DisplayImage(string filePath)
         {
             try
@@ -643,6 +668,8 @@ namespace SteppyBrowser
                     image = TgaImage.LoadBitmap(filePath);
                 else if (ext == ".koa" || ext == ".kla" || ext == ".koala")
                     image = KoalaImage.LoadBitmap(filePath);
+                else if (ext == ".bmp" && SunRasterImage.HasMagic(filePath))
+                    image = SunRasterImage.LoadBitmap(filePath);
                 else
                     image = Image.FromFile(filePath);
 
@@ -677,18 +704,15 @@ namespace SteppyBrowser
             }
             catch (OutOfMemoryException)
             {
-                textBox1.Text = "Error: Image is too large or invalid format.";
-                pictureBox1.Image = null;
+                ShowImageError("Error: Image is too large or invalid format.");
             }
             catch (FileNotFoundException)
             {
-                textBox1.Text = "Error: Image file not found.";
-                pictureBox1.Image = null;
+                ShowImageError("Error: Image file not found.");
             }
             catch (Exception ex)
             {
-                textBox1.Text = $"Error displaying image: {ex.Message}";
-                pictureBox1.Image = null;
+                ShowImageError($"Error displaying image: {ex.Message}");
             }
         }
 
@@ -999,6 +1023,23 @@ namespace SteppyBrowser
             sidPlayer = null;
         }
 
+        private void StopMidiPlayer()
+        {
+            midiPlayer?.Stop();
+            midiPlayer?.Dispose();
+            midiPlayer = null;
+        }
+
+        private void PlayMidiFile(string filePath)
+        {
+            StopMidiPlayer();
+            midiPlayer = new MidiPlayer(filePath);
+            midiPlayer.Start();
+            toolStripStatusLabel1.Text = midiPlayer.StatusText;
+            textBox1.Text = midiPlayer.Description;
+            ShowAudioScrubBar();
+        }
+
         private void PlaySidFile(string filePath)
         {
             StopSidPlayer();
@@ -1032,6 +1073,9 @@ namespace SteppyBrowser
             if (sidPlayer != null)
                 return sidPlayer.CurrentPosition;
 
+            if (midiPlayer != null)
+                return midiPlayer.CurrentPosition;
+
             if (xmiPlayer != null)
                 return xmiPlayer.CurrentPosition;
 
@@ -1043,6 +1087,9 @@ namespace SteppyBrowser
         {
             if (sidPlayer != null)
                 return 0;
+
+            if (midiPlayer != null)
+                return midiPlayer.Duration;
 
             if (xmiPlayer != null)
                 return xmiPlayer.Duration;
@@ -1056,6 +1103,9 @@ namespace SteppyBrowser
             if (sidPlayer != null)
                 return sidPlayer.IsPlaying;
 
+            if (midiPlayer != null)
+                return midiPlayer.IsPlaying;
+
             if (xmiPlayer != null)
                 return xmiPlayer.IsPlaying;
 
@@ -1066,6 +1116,12 @@ namespace SteppyBrowser
         {
             if (sidPlayer != null)
                 return;
+
+            if (midiPlayer != null)
+            {
+                midiPlayer.Seek(positionSeconds);
+                return;
+            }
 
             if (xmiPlayer != null)
             {
@@ -1091,6 +1147,13 @@ namespace SteppyBrowser
             if (sidPlayer != null)
             {
                 sidPlayer.TogglePause();
+            }
+            else if (midiPlayer != null)
+            {
+                if (midiPlayer.IsPlaying)
+                    midiPlayer.Pause();
+                else
+                    midiPlayer.Resume();
             }
             else if (xmiPlayer != null)
             {
@@ -1128,7 +1191,7 @@ namespace SteppyBrowser
             if (audioScrubbing)
                 return;
 
-            if (xmiPlayer == null && audioFileReader == null && sidPlayer == null)
+            if (xmiPlayer == null && midiPlayer == null && audioFileReader == null && sidPlayer == null)
                 return;
 
             double position = GetAudioPosition();

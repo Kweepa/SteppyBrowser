@@ -126,6 +126,7 @@
     <Compile Include="Program.cs" />
     <Compile Include="TgaImage.cs" />
     <Compile Include="KoalaImage.cs" />
+    <Compile Include="SunRasterImage.cs" />
     <Compile Include="ModelViewerControl.cs">
       <SubType>UserControl</SubType>
     </Compile>
@@ -135,6 +136,7 @@
     <Compile Include="XMINoteOffBuffer.cs" />
     <Compile Include="XMISequencer.cs" />
     <Compile Include="XMIPlayer.cs" />
+    <Compile Include="MidiPlayer.cs" />
     <Compile Include="SIDPlayer.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <EmbeddedResource Include="Form1.resx">
